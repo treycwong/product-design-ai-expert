@@ -1,12 +1,13 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { FeedbackTabs } from "@/components/feedback-tabs";
 import { ConciseReportPrompt } from "./concise-report-prompt";
 import type { MessageRow } from "@/lib/supabase/database.types";
 import { ImageIcon } from "lucide-react";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 interface ChatAreaProps {
   initialMessages: MessageRow[];
@@ -21,6 +22,39 @@ export function ChatArea({ initialMessages, threadId }: ChatAreaProps) {
   const [isLoading, setIsLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    if (!threadId) return;
+
+    const supabase = createSupabaseBrowserClient();
+
+    // Subscribe to updates on the messages table for this thread
+    const channel = supabase
+      .channel(`room:${threadId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "messages",
+          filter: `thread_id=eq.${threadId}`,
+        },
+        (payload) => {
+          const updatedMessage = payload.new as MessageRow;
+
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === updatedMessage.id ? updatedMessage : msg,
+            ),
+          );
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [threadId]);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -158,9 +192,12 @@ export function ChatArea({ initialMessages, threadId }: ChatAreaProps) {
                     {message.multi_agent_feedback ? (
                       <FeedbackTabs feedback={message.multi_agent_feedback} />
                     ) : (
-                      <p className="text-sm italic text-muted-foreground">
-                        Analyzing...
-                      </p>
+                      <div className="flex items-center gap-2">
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-r-transparent" />
+                        <p className="text-sm italic text-muted-foreground">
+                          Assistant is thinking...
+                        </p>
+                      </div>
                     )}
                   </div>
                 </div>
