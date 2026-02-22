@@ -11,6 +11,7 @@ import {
 import { ChatOpenAI } from "@langchain/openai";
 import { ChatAnthropic } from "@langchain/anthropic";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
+import { z } from "zod";
 import { FeedbackSchema } from "../schema";
 import { MultiAgentFeedback, FeedbackData } from "@/types/database";
 
@@ -186,7 +187,6 @@ async function aggregatorNode(state: typeof AgentState.State) {
   };
   return { finalFeedback };
 }
-
 export const feedbackGraph = new StateGraph(AgentState)
   .addNode("openai", openaiNode)
   .addNode("claude", claudeNode)
@@ -200,3 +200,21 @@ export const feedbackGraph = new StateGraph(AgentState)
   .addEdge("gemini", "aggregator")
   .addEdge("aggregator", "__end__")
   .compile();
+
+export async function runFeedbackGraph(input: {
+  text: string;
+  imageUrls: string[];
+  threadId?: string;
+}): Promise<MultiAgentFeedback> {
+  const result = await feedbackGraph.invoke(
+    {
+      messages: [new HumanMessage({ content: input.text })],
+      imageUrls: input.imageUrls,
+    },
+    {
+      configurable: { thread_id: input.threadId },
+    },
+  );
+
+  return result.finalFeedback as MultiAgentFeedback;
+}

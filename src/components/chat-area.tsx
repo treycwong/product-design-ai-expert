@@ -1,8 +1,10 @@
+/* eslint-disable @next/next/no-img-element */
 "use client";
 
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { FeedbackTabs } from "@/components/feedback-tabs";
+import { ConciseReportPrompt } from "./concise-report-prompt";
 import type { MessageRow } from "@/lib/supabase/database.types";
 import { ImageIcon } from "lucide-react";
 
@@ -72,6 +74,7 @@ export function ChatArea({ initialMessages, threadId }: ChatAreaProps) {
       user_content: inputText,
       image_urls: selectedImages.map((file) => URL.createObjectURL(file)),
       multi_agent_feedback: null,
+      audit_report: null,
       created_at: new Date().toISOString(),
     };
     setMessages((prev) => [...prev, tempUserMessage]);
@@ -149,16 +152,31 @@ export function ChatArea({ initialMessages, threadId }: ChatAreaProps) {
 
           if (message.role === "assistant") {
             return (
-              <div key={message.id} className="flex justify-start">
-                <div className="w-full max-w-[85%] rounded-lg border bg-card px-4 py-3 shadow-sm">
-                  {message.multi_agent_feedback ? (
-                    <FeedbackTabs feedback={message.multi_agent_feedback} />
-                  ) : (
-                    <p className="text-sm italic text-muted-foreground">
-                      Analyzing...
-                    </p>
-                  )}
+              <div key={message.id} className="flex flex-col gap-3">
+                <div className="flex justify-start">
+                  <div className="w-full max-w-[85%] rounded-lg border bg-card px-4 py-3 shadow-sm">
+                    {message.multi_agent_feedback ? (
+                      <FeedbackTabs feedback={message.multi_agent_feedback} />
+                    ) : (
+                      <p className="text-sm italic text-muted-foreground">
+                        Analyzing...
+                      </p>
+                    )}
+                  </div>
                 </div>
+                {message.multi_agent_feedback && (
+                  <ConciseReportPrompt
+                    messageId={message.id}
+                    feedback={message.multi_agent_feedback}
+                    productContext={
+                      messages.find((m) => m.role === "user")?.user_content ||
+                      ""
+                    }
+                    hasGeneratedPreviously={
+                      (message.audit_report as any)?.type === "concise"
+                    }
+                  />
+                )}
               </div>
             );
           }

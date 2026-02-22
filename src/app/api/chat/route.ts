@@ -1,5 +1,5 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { feedbackGraph } from "@/lib/agents/feedbackGraph";
+import { runFeedbackGraph } from "@/lib/agents/feedbackGraph";
 import { HumanMessage } from "@langchain/core/messages";
 import { revalidatePath } from "next/cache";
 export async function POST(request: Request) {
@@ -83,15 +83,11 @@ export async function POST(request: Request) {
       );
     }
 
-    const initialState = {
-      messages: [new HumanMessage({ content: text })],
-      imageUrls: imageUrls,
-    };
-
-    const finalState = await feedbackGraph.invoke(initialState, {
-      configurable: { thread_id: resolvedThreadId },
+    const feedbackResult = await runFeedbackGraph({
+      text,
+      imageUrls,
+      threadId: resolvedThreadId,
     });
-    const multiAgentFeedback = finalState.finalFeedback || null;
 
     const { data: assistantMessage, error: asstMsgError } = await supabase
       .from("messages")
@@ -100,7 +96,8 @@ export async function POST(request: Request) {
         role: "assistant",
         user_content: null,
         image_urls: null,
-        multi_agent_feedback: multiAgentFeedback,
+        multi_agent_feedback: feedbackResult,
+        audit_report: null,
       })
       .select()
       .single();
@@ -160,7 +157,7 @@ export async function DELETE(request: Request) {
       );
     }
 
-    revalidatePath("/chat", "layout");
+    revalidatePath("/", "layout");
 
     return Response.json({ success: true });
   } catch (err: any) {

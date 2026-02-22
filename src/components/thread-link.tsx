@@ -33,9 +33,11 @@ export function ThreadLink({ thread }: { thread: ThreadRow }) {
 
       if (res.ok) {
         setOpen(false);
-        router.refresh();
         if (isActive) {
-          router.push("/chat");
+          router.replace("/chat");
+          router.refresh();
+        } else {
+          router.refresh();
         }
       } else {
         const errorData = await res.json().catch(() => ({}));
