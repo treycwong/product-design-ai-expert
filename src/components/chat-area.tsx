@@ -28,33 +28,32 @@ export function ChatArea({ initialMessages, threadId }: ChatAreaProps) {
 
     const supabase = createSupabaseBrowserClient();
 
-    // Subscribe to updates on the messages table for this thread
-    const channel = supabase
-      .channel(`room:${threadId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "messages",
-          filter: `thread_id=eq.${threadId}`,
-        },
-        (payload) => {
-          const updatedMessage = payload.new as MessageRow;
+    // Polling mechanism to fetch messages if there's a pending assistant response
+    // Supabase Realtime can sometimes drop large JSONB payloads like our multi_agent_feedback
+    const hasPending = messages.some(
+      (m) => m.role === "assistant" && !m.multi_agent_feedback,
+    );
 
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === updatedMessage.id ? updatedMessage : msg,
-            ),
-          );
-        },
-      )
-      .subscribe();
+    let intervalId: NodeJS.Timeout;
+
+    if (hasPending) {
+      intervalId = setInterval(async () => {
+        const { data, error } = await supabase
+          .from("messages")
+          .select("*")
+          .eq("thread_id", threadId)
+          .order("created_at", { ascending: true });
+
+        if (data && !error) {
+          setMessages(data as MessageRow[]);
+        }
+      }, 2000); // Poll every 2 seconds
+    }
 
     return () => {
-      supabase.removeChannel(channel);
+      if (intervalId) clearInterval(intervalId);
     };
-  }, [threadId]);
+  }, [threadId, messages]);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -111,7 +110,20 @@ export function ChatArea({ initialMessages, threadId }: ChatAreaProps) {
       audit_report: null,
       created_at: new Date().toISOString(),
     };
-    setMessages((prev) => [...prev, tempUserMessage]);
+
+    const tempAssistantMessageId = crypto.randomUUID();
+    const tempAssistantMessage: MessageRow = {
+      id: tempAssistantMessageId,
+      thread_id: threadId || "",
+      role: "assistant",
+      user_content: null,
+      image_urls: null,
+      multi_agent_feedback: null,
+      audit_report: null,
+      created_at: new Date().toISOString(),
+    };
+
+    setMessages((prev) => [...prev, tempUserMessage, tempAssistantMessage]);
 
     setInputText("");
     setSelectedImages([]);
@@ -126,7 +138,12 @@ export function ChatArea({ initialMessages, threadId }: ChatAreaProps) {
 
       if (!response.ok) {
         setErrorText(data.error || "Failed to submit.");
-        setMessages((prev) => prev.filter((m) => m.id !== tempUserMessage.id));
+        setMessages((prev) =>
+          prev.filter(
+            (m) =>
+              m.id !== tempUserMessage.id && m.id !== tempAssistantMessageId,
+          ),
+        );
         return;
       }
 
@@ -136,15 +153,24 @@ export function ChatArea({ initialMessages, threadId }: ChatAreaProps) {
 
       router.refresh();
 
-      setMessages((prev) => [
-        ...prev.filter((m) => m.id !== tempUserMessage.id),
-        data.userMessage,
-        data.assistantMessage,
-      ]);
+      setMessages((prev) => {
+        const remaining = prev.filter(
+          (m) =>
+            m.id !== tempUserMessage.id &&
+            m.id !== tempAssistantMessageId &&
+            m.id !== data.userMessage.id &&
+            m.id !== data.assistantMessage.id,
+        );
+        return [...remaining, data.userMessage, data.assistantMessage];
+      });
     } catch (err) {
       console.error(err);
       setErrorText("An unexpected network error occurred.");
-      setMessages((prev) => prev.filter((m) => m.id !== tempUserMessage.id));
+      setMessages((prev) =>
+        prev.filter(
+          (m) => m.id !== tempUserMessage.id && m.id !== tempAssistantMessageId,
+        ),
+      );
     } finally {
       setIsLoading(false);
     }
@@ -188,16 +214,15 @@ export function ChatArea({ initialMessages, threadId }: ChatAreaProps) {
             return (
               <div key={message.id} className="flex flex-col gap-3">
                 <div className="flex justify-start">
-                  <div className="w-full max-w-[85%] rounded-lg border bg-card px-4 py-3 shadow-sm">
+                  <div
+                    className={`max-w-[85%] rounded-lg border bg-card px-4 py-3 shadow-sm ${message.multi_agent_feedback ? "w-full" : "w-fit"}`}
+                  >
                     {message.multi_agent_feedback ? (
                       <FeedbackTabs feedback={message.multi_agent_feedback} />
                     ) : (
-                      <div className="flex items-center gap-2">
-                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-r-transparent" />
-                        <p className="text-sm italic text-muted-foreground">
-                          Assistant is thinking...
-                        </p>
-                      </div>
+                      <p className="text-sm italic text-muted-foreground animate-pulse">
+                        Assistant is thinking...
+                      </p>
                     )}
                   </div>
                 </div>
@@ -219,15 +244,6 @@ export function ChatArea({ initialMessages, threadId }: ChatAreaProps) {
           }
           return null;
         })}
-        {isLoading && (
-          <div className="flex justify-start">
-            <div className="max-w-[85%] rounded-lg border bg-card px-4 py-3 shadow-sm">
-              <p className="text-sm italic text-muted-foreground animate-pulse">
-                Assistant is thinking...
-              </p>
-            </div>
-          </div>
-        )}
       </div>
 
       <div className="border-t bg-background p-4">
