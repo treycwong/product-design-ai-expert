@@ -61,20 +61,9 @@ async function fetchAsBase64(url: string) {
   if (url.startsWith("data:")) return url;
   const res = await fetch(url);
   const arrayBuffer = await res.arrayBuffer();
-
-  // Use web-standard btoa since Buffer is not available in Edge runtime
-  const bytes = new Uint8Array(arrayBuffer);
-  let binary = "";
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  const base64 =
-    typeof btoa !== "undefined"
-      ? btoa(binary)
-      : Buffer.from(bytes).toString("base64");
-
+  const buffer = Buffer.from(arrayBuffer);
   const mimeType = res.headers.get("content-type") || "image/jpeg";
-  return `data:${mimeType};base64,${base64}`;
+  return `data:${mimeType};base64,${buffer.toString("base64")}`;
 }
 
 async function formatInputMessage(

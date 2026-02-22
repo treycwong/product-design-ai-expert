@@ -2,9 +2,9 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { runFeedbackGraph } from "@/lib/agents/feedbackGraph";
 import { HumanMessage } from "@langchain/core/messages";
 import { revalidatePath } from "next/cache";
+import { unstable_after as after } from "next/server";
 
 export const maxDuration = 60;
-export const runtime = "edge";
 
 export async function POST(request: Request) {
   try {
@@ -87,12 +87,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const feedbackResult = await runFeedbackGraph({
-      text,
-      imageUrls,
-      threadId: resolvedThreadId,
-    });
-
+    // Immediately insert a skeleton "assistant" message to return to the UI
     const { data: assistantMessage, error: asstMsgError } = await supabase
       .from("messages")
       .insert({
@@ -100,7 +95,7 @@ export async function POST(request: Request) {
         role: "assistant",
         user_content: null,
         image_urls: null,
-        multi_agent_feedback: feedbackResult,
+        multi_agent_feedback: null,
         audit_report: null,
       })
       .select()
@@ -108,11 +103,49 @@ export async function POST(request: Request) {
 
     if (asstMsgError || !assistantMessage) {
       return Response.json(
-        { error: "Failed to save assistant message." },
+        { error: "Failed to save assistant skeleton message." },
         { status: 500 },
       );
     }
 
+    // Schedule the slow LLM work in the background
+    after(async () => {
+      try {
+        const backgroundSupabase = await createSupabaseServerClient();
+        console.log(
+          `[Background] Running agent evaluations for message ${assistantMessage.id}...`,
+        );
+
+        const feedbackResult = await runFeedbackGraph({
+          text,
+          imageUrls,
+          threadId: resolvedThreadId,
+        });
+
+        const { error: updateError } = await backgroundSupabase
+          .from("messages")
+          .update({
+            multi_agent_feedback: feedbackResult,
+          })
+          .eq("id", assistantMessage.id);
+
+        if (updateError) {
+          console.error(
+            "[Background] Failed to update assistant message:",
+            updateError,
+          );
+        } else {
+          console.log(
+            `[Background] Evaluated and updated message ${assistantMessage.id} successfully.`,
+          );
+        }
+      } catch (bgError) {
+        console.error("[Background] Failed executing agents:", bgError);
+      }
+    });
+
+    // Return the response immediately so Vercel does not time out.
+    // The UI will see `multi_agent_feedback` is null and show the "Analyzing..." skeleton UI.
     return Response.json({
       threadId: resolvedThreadId,
       userMessage,
