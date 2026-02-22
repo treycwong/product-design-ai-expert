@@ -2,6 +2,9 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { runFeedbackGraph } from "@/lib/agents/feedbackGraph";
 import { HumanMessage } from "@langchain/core/messages";
 import { revalidatePath } from "next/cache";
+
+export const maxDuration = 60;
+
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
