@@ -47,7 +47,7 @@ const openaiModel = new ChatOpenAI({
   apiKey: process.env.OPENAI_API_KEY || "dummy",
 }).withStructuredOutput(FeedbackSchema);
 const claudeModel = new ChatAnthropic({
-  modelName: "claude-haiku-4-5",
+  modelName: "claude-3-5-sonnet-latest",
   temperature: 0,
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || "dummy",
 }).withStructuredOutput(FeedbackSchema);
