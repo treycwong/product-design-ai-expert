@@ -13,7 +13,7 @@ export async function Sidebar() {
     <aside className="flex w-64 flex-col border-r bg-muted/40 p-4 shrink-0">
       <div className="mb-4">
         <h2 className="text-lg font-semibold tracking-tight text-foreground">
-          Product Design AI Expert
+          Verdikt AI
         </h2>
       </div>
       <Link

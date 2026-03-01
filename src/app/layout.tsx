@@ -12,8 +12,11 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Product Design AI Expert",
-  description: "A Multi-LLM Product Design Agent Review",
+  title: "Verdikt AI",
+  description: "Verdikt AI - A Multi-LLM Product Design Agent Review",
+  icons: {
+    icon: "/Verdikt_Favicon.png",
+  },
 };
 
 export default function RootLayout({
